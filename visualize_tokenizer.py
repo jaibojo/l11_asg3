@@ -18,9 +18,14 @@ def main():
     end_time = time.time()
     print(f"\nTokenization completed in {end_time - start_time:.2f} seconds")
     
-    # Print compression stats
-    compression_ratio = tokenizer.get_compression_ratio()
-    print(f"\nCompression ratio: {compression_ratio:.2f}")
+    # Get and print statistics
+    stats = tokenizer.get_stats()
+    print("\nTokenization Statistics:")
+    print(f"1. Initial tokens: {stats['initial_tokens']:,}")
+    print(f"   Initial vocabulary size: {stats['initial_vocab']:,}")
+    print(f"\n2. Final tokens: {stats['final_tokens']:,}")
+    print(f"   Final vocabulary size: {stats['final_vocab']:,}")
+    print(f"\n3. Compression ratio: {stats['compression_ratio']:.2f}")
 
 if __name__ == "__main__":
     main() 

@@ -6,8 +6,10 @@ from tabulate import tabulate
 class HindiTokenizer:
     def __init__(self, file_path: str):
         self.file_path = file_path
-        self.vocab_size = 1000
-        self.special_tokens = ['<pad>', '<eos>', '<bos>', '<unk>']
+        self.initial_vocab_size = 0  # To store initial vocab size
+        self.initial_tokens_length = 0  # To store initial tokens length
+        self.vocab_size = 50000  # Target vocab size
+        self.special_tokens = ['<pad>', '<eos>', '<bos>', '<unk>', '<num>', '<eng>']
         self.token_to_id = {}
         self.id_to_token = {}
         self.next_id = 0
@@ -16,6 +18,11 @@ class HindiTokenizer:
             self.text = self.load_and_clean_text()
             self.vocab = set()
             self.initialize_vocab()
+            # Store initial stats
+            self.initial_tokens_length = len(self.text.split())
+            self.initial_vocab_size = len(self.vocab)
+            # Adjust vocab_size to account for initial vocab
+            self.vocab_size = 50000 - self.initial_vocab_size
             self.build_vocabulary()
         except FileNotFoundError:
             raise FileNotFoundError(f"Could not find file: {file_path}")
@@ -198,4 +205,14 @@ class HindiTokenizer:
             if text[i] != ' ':
                 tokens.append(text[i])
             i += 1
-        return len(tokens) 
+        return len(tokens)
+    
+    def get_stats(self):
+        """Get tokenization statistics"""
+        return {
+            "initial_tokens": self.initial_tokens_length,
+            "initial_vocab": self.initial_vocab_size,
+            "final_tokens": len(self.text.split()),
+            "final_vocab": len(self.vocab) + self.initial_vocab_size,
+            "compression_ratio": self.initial_tokens_length / len(self.text.split()) if len(self.text.split()) > 0 else 0
+        } 
