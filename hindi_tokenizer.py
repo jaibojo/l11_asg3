@@ -4,32 +4,59 @@ from typing import List, Dict, Tuple
 from tabulate import tabulate
 
 class HindiTokenizer:
+    """
+    A tokenizer for Hindi text that uses Byte-Pair Encoding (BPE) on UTF-8 encoded tokens.
+    Implements a vocabulary-based compression algorithm that iteratively merges the most
+    frequent pairs of UTF-8 codes into new tokens.
+    """
     def __init__(self, file_path: str):
+        # Basic configuration
         self.file_path = file_path
-        self.initial_vocab_size = 0  # To store initial vocab size
-        self.initial_tokens_length = 0  # To store initial tokens length
-        self.vocab_size = 50000  # Target vocab size
+        self.initial_vocab_size = 0  # Tracks size of initial vocabulary (characters + special tokens)
+        self.initial_tokens_length = 0  # Tracks initial number of UTF-8 codes
+        self.vocab_size = 50000  # Target final vocabulary size
+        
+        # Special tokens for various text processing needs
         self.special_tokens = ['<pad>', '<eos>', '<bos>', '<unk>', '<num>', '<eng>']
-        self.token_to_id = {}
-        self.id_to_token = {}
-        self.next_id = 0
+        
+        # Mappings between tokens and their IDs
+        self.token_to_id = {}  # Maps tokens to unique IDs
+        self.id_to_token = {}  # Maps IDs back to tokens
+        self.next_id = 0  # Tracks next available ID for new tokens
         
         try:
+            # Step 1 & 2: Load and clean the input text
             self.text = self.load_and_clean_text()
-            self.vocab = set()
+            self.vocab = set()  # Set to store unique tokens
+            
+            # Step 3: Initialize vocabulary with special tokens and characters
             self.initialize_vocab()
-            # Store initial stats
-            self.initial_tokens_length = len(self.text.split())
+            
+            # Step 4: Convert text to UTF-8 encodings for BPE
+            self.encoded_tokens = self.convert_to_utf8()
+            
+            # Store initial statistics
+            self.initial_tokens_length = len(self.encoded_tokens)
             self.initial_vocab_size = len(self.vocab)
-            # Adjust vocab_size to account for initial vocab
+            
+            # Adjust target vocab size to account for initial vocabulary
             self.vocab_size = 50000 - self.initial_vocab_size
+            
+            # Step 5-7: Build final vocabulary using BPE
             self.build_vocabulary()
+            
         except FileNotFoundError:
             raise FileNotFoundError(f"Could not find file: {file_path}")
     
     def load_and_clean_text(self) -> str:
-        """Load and clean the text"""
-        # Read file in chunks to handle large files
+        """
+        Load text file and clean it by:
+        - Replacing numbers with <num> token
+        - Replacing English words with <eng> token
+        - Removing punctuation and special characters
+        - Keeping only Hindi characters and spaces
+        """
+        # Read large files in chunks to manage memory
         chunk_size = 1024 * 1024  # 1MB chunks
         text = ""
         
@@ -42,12 +69,19 @@ class HindiTokenizer:
         
         # Text cleaning steps
         print("Cleaning text...")
+        # Replace numbers with special token
         text = re.sub(r'[०-९0-9]+', ' <num> ', text)
+        # Replace English words with special token
         text = re.sub(r'[A-Za-z]+', ' <eng> ', text)
+        # Remove punctuation
         text = re.sub(r'[!@#$%^&*(),.?":{}|<>]', ' ', text)
+        # Remove Hindi purna viram and double purna viram
         text = re.sub(r'[\u0964\u0965]', ' ', text)
+        # Keep only Hindi characters and special tokens
         text = re.sub(r'[^\u0900-\u097F\s<>a-z]', '', text)
+        # Normalize spaces
         text = re.sub(r'\s+', ' ', text)
+        # Merge consecutive special tokens
         text = re.sub(r'<num>\s*<num>', '<num>', text)
         text = re.sub(r'<eng>\s*<eng>', '<eng>', text)
         
@@ -55,7 +89,7 @@ class HindiTokenizer:
         return text.strip()
     
     def add_token(self, token: str):
-        """Add a token to vocabulary with unique ID"""
+        """Add a new token to vocabulary with a unique ID"""
         if token not in self.token_to_id:
             self.token_to_id[token] = self.next_id
             self.id_to_token[self.next_id] = token
@@ -63,79 +97,96 @@ class HindiTokenizer:
             self.vocab.add(token)
     
     def initialize_vocab(self):
-        """Initialize vocabulary with special tokens and individual characters"""
-        # Add special tokens first
+        """
+        Initialize vocabulary with:
+        1. Special tokens (pad, eos, bos, unk, num, eng)
+        2. Individual characters from the text
+        """
+        # Add special tokens first to ensure consistent IDs
         for token in self.special_tokens:
             self.add_token(token)
         
-        # Add individual characters
+        # Add each unique character from text
         for char in self.text:
-            if char.strip():
+            if char.strip():  # Skip whitespace
                 self.add_token(char)
     
+    def convert_to_utf8(self) -> List[List[int]]:
+        """
+        Convert text tokens to UTF-8 encodings.
+        Returns a list of lists, where each inner list contains
+        the UTF-8 codes for a token.
+        """
+        tokens = self.text.split()
+        encoded_tokens = []
+        for token in tokens:
+            # Convert each character to its UTF-8 encoding
+            encoded_token = []
+            for char in token:
+                encoded_token.extend(char.encode('utf-8'))
+            encoded_tokens.append(encoded_token)
+        return encoded_tokens
+    
     def get_pairs(self) -> Counter:
-        """Get all adjacent pairs with their frequencies"""
-        words = self.text.split()
+        """
+        Find all adjacent pairs of UTF-8 codes and count their frequencies.
+        Used to identify the most common pairs for merging.
+        """
         pairs = Counter()
         
-        for word in words:
-            # Convert word into tokens, skipping over ID tokens
-            tokens = []
-            i = 0
-            while i < len(word):
-                # Skip ID tokens (e.g., _72_)
-                if word[i] == '_' and i + 1 < len(word):
-                    end = word.find('_', i + 1)
-                    if end != -1:
-                        tokens.append(word[i:end+1])
-                        i = end + 1
-                        continue
-                tokens.append(word[i])
-                i += 1
+        for encoded_token in self.encoded_tokens:
+            if len(encoded_token) < 2:
+                continue
             
-            # Find pairs between tokens
-            for i in range(len(tokens)-1):
-                pair = (tokens[i], tokens[i+1])
+            # Count frequencies of adjacent pairs
+            for i in range(len(encoded_token)-1):
+                pair = (encoded_token[i], encoded_token[i+1])
                 pairs[pair] += 1
         
         return pairs
     
-    def merge_pair(self, pair: Tuple[str, str], merged_token: str, token_id: int) -> bool:
-        """Replace pair with a unique ID token everywhere in text"""
-        words = self.text.split()
-        new_words = []
+    def merge_pair(self, pair: Tuple[int, int], merged_token: Tuple[int, int], token_id: int) -> bool:
+        """
+        Replace all occurrences of a UTF-8 code pair with a new token ID.
+        Returns True if any merges were performed.
+        """
         any_changes = False
+        new_encoded_tokens = []
         
-        # Create unique ID token
-        id_token = f"_{token_id}_"
-        
-        for word in words:
-            # Replace the pair in each word
-            new_word = word
-            pair_str = f"{pair[0]}{pair[1]}"
-            while pair_str in new_word:  # Keep replacing until no more occurrences
-                new_word = new_word.replace(pair_str, id_token)
-                any_changes = True
-            new_words.append(new_word)
+        for encoded_token in self.encoded_tokens:
+            new_token = []
+            i = 0
+            while i < len(encoded_token):
+                # Check if current position has the target pair
+                if (i < len(encoded_token)-1 and 
+                    encoded_token[i] == pair[0] and 
+                    encoded_token[i+1] == pair[1]):
+                    new_token.append(token_id)
+                    i += 2
+                    any_changes = True
+                else:
+                    new_token.append(encoded_token[i])
+                    i += 1
+            new_encoded_tokens.append(new_token)
         
         if any_changes:
-            self.text = ' '.join(new_words)
+            self.encoded_tokens = new_encoded_tokens
             return True
         return False
     
     def build_vocabulary(self):
-        """Build vocabulary using BPE"""
-        # 1. Print initial stats
-        initial_tokens = self.count_real_tokens(self.text)
-        initial_vocab = len(self.vocab)
-        print(f"1. Initial Length of tokens: {initial_tokens}")
-        print(f"2. Initial vocabulary size: {initial_vocab}")
-        print("\nStarting BPE algorithm...")
+        """
+        Build vocabulary using BPE algorithm on UTF-8 encodings:
+        1. Find most frequent pair of UTF-8 codes
+        2. Replace pair with a new token ID
+        3. Repeat until desired vocabulary size is reached
+        """
+        print("\nStarting BPE algorithm on UTF-8 encodings...")
         
         iteration = 0
         while len(self.vocab) < self.vocab_size:
-            # Get current token count
-            tokens_before = self.count_real_tokens(self.text)
+            # Count current tokens for progress tracking
+            tokens_before = sum(len(t) for t in self.encoded_tokens)
             
             # Find most common pair
             pairs = self.get_pairs()
@@ -145,17 +196,15 @@ class HindiTokenizer:
             most_common = pairs.most_common(1)[0]
             pair = most_common[0]
             freq = most_common[1]
-            merged_token = ''.join(pair)
-            new_id = len(self.vocab)
+            new_id = len(self.vocab) + self.initial_vocab_size
             
-            # Try to merge
-            if merged_token not in self.vocab:
-                if self.merge_pair(pair, merged_token, new_id):
-                    self.add_token(merged_token)
-                    tokens_after = self.count_real_tokens(self.text)
-                    print(f"Started | Iteration {iteration} | {merged_token} | {freq} times | {new_id} | {tokens_before} | {tokens_after}")
-                
-                iteration += 1
+            # Merge pair if possible
+            if self.merge_pair(pair, pair, new_id):
+                self.vocab.add(new_id)
+                tokens_after = sum(len(t) for t in self.encoded_tokens)
+                print(f"Iteration {iteration} | Merged {pair} | {freq} times | New ID: {new_id} | Tokens: {tokens_before} → {tokens_after}")
+            
+            iteration += 1
     
     def tokenize(self, text: str) -> List[int]:
         """Tokenize input text using the built vocabulary"""
@@ -208,11 +257,17 @@ class HindiTokenizer:
         return len(tokens)
     
     def get_stats(self):
-        """Get tokenization statistics"""
+        """
+        Get tokenization statistics including:
+        - Initial/final token counts
+        - Initial/final vocabulary sizes
+        - Compression ratio
+        """
+        final_tokens = sum(len(t) for t in self.encoded_tokens)
         return {
             "initial_tokens": self.initial_tokens_length,
             "initial_vocab": self.initial_vocab_size,
-            "final_tokens": len(self.text.split()),
+            "final_tokens": final_tokens,
             "final_vocab": len(self.vocab) + self.initial_vocab_size,
-            "compression_ratio": self.initial_tokens_length / len(self.text.split()) if len(self.text.split()) > 0 else 0
+            "compression_ratio": self.initial_tokens_length / final_tokens if final_tokens > 0 else 0
         } 
