@@ -97,14 +97,24 @@ class HindiTokenizer:
         1. Special tokens (pad, eos, bos, unk, num, eng)
         2. Individual characters from the text
         """
+        print("\nInitializing vocabulary...")
+        
         # Add special tokens first to ensure consistent IDs
+        print("Special tokens:")
         for token in self.special_tokens:
             self.add_token(token)
+            print(f"  {token}")
         
         # Add each unique character from text
-        for char in self.text:
-            if char.strip():  # Skip whitespace
-                self.add_token(char)
+        unique_chars = sorted(set(char for char in self.text if char.strip()))
+        print("\nUnique characters:")
+        for char in unique_chars:
+            self.add_token(char)
+            print(f"  '{char}' ({ord(char)})")
+        
+        print(f"\nInitial vocabulary size: {len(self.vocab)}")
+        print("- Special tokens:", len(self.special_tokens))
+        print("- Unique characters:", len(unique_chars))
     
     def convert_to_utf8(self) -> List[List[int]]:
         """
@@ -171,17 +181,17 @@ class HindiTokenizer:
     
     def build_vocabulary(self):
         """
-        Build vocabulary using BPE algorithm on UTF-8 encodings:
-        1. Find most frequent pair of UTF-8 codes
-        2. Replace pair with a new token ID
-        3. Repeat until desired vocabulary size is reached
+        Build vocabulary using BPE algorithm on UTF-8 encodings
         """
+        # First print initial token stats
+        self.initial_tokens_length = sum(len(t) for t in self.encoded_tokens)
+        print(f"\nInitial statistics:")
+        print(f"- Total tokens: {self.initial_tokens_length:,}")
+        print(f"- Vocabulary size: {self.initial_vocab_size:,}")
+        
         print("\nStarting BPE algorithm on UTF-8 encodings...")
         
         iteration = 0
-        # Store initial token count from first iteration
-        self.initial_tokens_length = sum(len(t) for t in self.encoded_tokens)
-        
         while len(self.vocab) < self.vocab_size:
             # Count current tokens for progress tracking
             tokens_before = sum(len(t) for t in self.encoded_tokens)
