@@ -62,8 +62,17 @@ class HindiTokenizer:
                     break
                 text += chunk
         
+        # Print initial text statistics
+        print("\nDataset Statistics:")
+        print(f"Total characters: {len(text):,}")
+        print(f"Total words: {len(text.split()):,}")
+        print("\nFirst 100 characters of raw text:")
+        print("-" * 50)
+        print(text[:100])
+        print("-" * 50)
+        
         # Text cleaning steps
-        print("Cleaning text...")
+        print("\nCleaning text...")
         # Replace numbers with special token
         text = re.sub(r'[०-९0-9]+', ' <num> ', text)
         # Replace English words with special token
@@ -80,8 +89,18 @@ class HindiTokenizer:
         text = re.sub(r'<num>\s*<num>', '<num>', text)
         text = re.sub(r'<eng>\s*<eng>', '<eng>', text)
         
-        print("Text cleaning complete!")
-        return text.strip()
+        cleaned_text = text.strip()
+        
+        # Print cleaned text statistics
+        print("\nAfter cleaning:")
+        print(f"Total characters: {len(cleaned_text):,}")
+        print(f"Total words: {len(cleaned_text.split()):,}")
+        print("\nFirst 100 characters of cleaned text:")
+        print("-" * 50)
+        print(cleaned_text[:100])
+        print("-" * 50)
+        
+        return cleaned_text
     
     def add_token(self, token: str):
         """Add a new token to vocabulary with a unique ID"""
@@ -206,13 +225,31 @@ class HindiTokenizer:
             freq = most_common[1]
             new_id = len(self.vocab) + self.initial_vocab_size
             
-            # Convert UTF-8 codes back to characters for display
+            # Convert the entire sequence containing the pair to show actual text
             try:
-                char1 = bytes([pair[0]]).decode('utf-8', errors='ignore')
-                char2 = bytes([pair[1]]).decode('utf-8', errors='ignore')
-                merged_chars = f"'{char1 + char2}'"
+                # Find a token containing this pair
+                example_token = None
+                for token in self.encoded_tokens:
+                    for i in range(len(token)-1):
+                        if token[i] == pair[0] and token[i+1] == pair[1]:
+                            example_token = token
+                            break
+                    if example_token:
+                        break
+                
+                if example_token:
+                    # Convert the full token to show context
+                    full_text = bytes(example_token).decode('utf-8')
+                    # Find the subword being merged
+                    for i in range(len(example_token)-1):
+                        if example_token[i] == pair[0] and example_token[i+1] == pair[1]:
+                            subword = bytes(example_token[i:i+2]).decode('utf-8', errors='ignore')
+                            merged_chars = f"'{subword}' in '{full_text}'"
+                            break
+                else:
+                    merged_chars = "<?>"
             except:
-                merged_chars = "<?>"  # Fallback for incomplete UTF-8 sequences
+                merged_chars = "<?>"
             
             # Merge pair if possible
             if self.merge_pair(pair, pair, new_id):
