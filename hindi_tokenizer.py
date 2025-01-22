@@ -12,22 +12,18 @@ class HindiTokenizer:
     def __init__(self, file_path: str):
         # Basic configuration
         self.file_path = file_path
-        self.initial_vocab_size = 0  # Tracks size of initial vocabulary (characters + special tokens)
-        self.initial_tokens_length = 0  # Tracks initial number of UTF-8 codes
-        self.vocab_size = 50000  # Target final vocabulary size
-        
-        # Special tokens for various text processing needs
+        self.initial_vocab_size = 0
+        self.initial_tokens_length = 0  # Will be set in build_vocabulary
+        self.vocab_size = 50000
         self.special_tokens = ['<pad>', '<eos>', '<bos>', '<unk>', '<num>', '<eng>']
-        
-        # Mappings between tokens and their IDs
-        self.token_to_id = {}  # Maps tokens to unique IDs
-        self.id_to_token = {}  # Maps IDs back to tokens
-        self.next_id = 0  # Tracks next available ID for new tokens
+        self.token_to_id = {}
+        self.id_to_token = {}
+        self.next_id = 0
         
         try:
             # Step 1 & 2: Load and clean the input text
             self.text = self.load_and_clean_text()
-            self.vocab = set()  # Set to store unique tokens
+            self.vocab = set()
             
             # Step 3: Initialize vocabulary with special tokens and characters
             self.initialize_vocab()
@@ -35,11 +31,10 @@ class HindiTokenizer:
             # Step 4: Convert text to UTF-8 encodings for BPE
             self.encoded_tokens = self.convert_to_utf8()
             
-            # Store initial statistics
-            self.initial_tokens_length = len(self.encoded_tokens)
+            # Store initial vocab size
             self.initial_vocab_size = len(self.vocab)
             
-            # Adjust target vocab size to account for initial vocabulary
+            # Adjust target vocab size to account for initial vocab
             self.vocab_size = 50000 - self.initial_vocab_size
             
             # Step 5-7: Build final vocabulary using BPE
@@ -184,6 +179,9 @@ class HindiTokenizer:
         print("\nStarting BPE algorithm on UTF-8 encodings...")
         
         iteration = 0
+        # Store initial token count from first iteration
+        self.initial_tokens_length = sum(len(t) for t in self.encoded_tokens)
+        
         while len(self.vocab) < self.vocab_size:
             # Count current tokens for progress tracking
             tokens_before = sum(len(t) for t in self.encoded_tokens)
@@ -198,11 +196,24 @@ class HindiTokenizer:
             freq = most_common[1]
             new_id = len(self.vocab) + self.initial_vocab_size
             
+            # Convert UTF-8 codes back to characters for display
+            try:
+                char1 = bytes([pair[0]]).decode('utf-8', errors='ignore')
+                char2 = bytes([pair[1]]).decode('utf-8', errors='ignore')
+                merged_chars = f"'{char1 + char2}'"
+            except:
+                merged_chars = "<?>"  # Fallback for incomplete UTF-8 sequences
+            
             # Merge pair if possible
             if self.merge_pair(pair, pair, new_id):
                 self.vocab.add(new_id)
                 tokens_after = sum(len(t) for t in self.encoded_tokens)
-                print(f"Iteration {iteration} | Merged {pair} | {freq} times | New ID: {new_id} | Tokens: {tokens_before} → {tokens_after}")
+                print(f"Iteration {iteration:,} | "
+                      f"Merged {pair} ({merged_chars}) | "
+                      f"Frequency: {freq:,} | "
+                      f"New ID: {new_id:,} | "
+                      f"Tokens: {tokens_before:,} → {tokens_after:,} | "
+                      f"Vocab Size: {len(self.vocab) + self.initial_vocab_size:,}")
             
             iteration += 1
     
@@ -259,15 +270,17 @@ class HindiTokenizer:
     def get_stats(self):
         """
         Get tokenization statistics including:
-        - Initial/final token counts
-        - Initial/final vocabulary sizes
-        - Compression ratio
+        - Initial tokens: Number of characters in original text
+        - Initial vocab: Size of vocabulary before BPE
+        - Final tokens: Number of tokens after BPE
+        - Final vocab: Size of vocabulary after BPE
+        - Compression ratio: Initial tokens / Final tokens
         """
         final_tokens = sum(len(t) for t in self.encoded_tokens)
         return {
-            "initial_tokens": self.initial_tokens_length,
-            "initial_vocab": self.initial_vocab_size,
-            "final_tokens": final_tokens,
-            "final_vocab": len(self.vocab) + self.initial_vocab_size,
+            "initial_tokens": self.initial_tokens_length,  # Original character count
+            "initial_vocab": self.initial_vocab_size,      # Original vocab size
+            "final_tokens": final_tokens,                  # Tokens after BPE
+            "final_vocab": len(self.vocab) + self.initial_vocab_size,  # Final vocab size
             "compression_ratio": self.initial_tokens_length / final_tokens if final_tokens > 0 else 0
         } 
